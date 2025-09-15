@@ -9,9 +9,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     <style>
         :root {
-            --grid-size: 50px;
-            --dot-color: rgba(255, 255, 255, 0.1);
-            --background-color: #020617; /* slate-950 */
+            --background-color: #030712; /* Deep, dark blue */
         }
         body {
             font-family: 'Inter', sans-serif;
@@ -26,25 +24,8 @@
             outline: none;
             z-index: 0;
         }
-        .animated-grid {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-image:
-                linear-gradient(to right, var(--dot-color) 1px, transparent 1px),
-                linear-gradient(to bottom, var(--dot-color) 1px, transparent 1px);
-            background-size: var(--grid-size) var(--grid-size);
-            animation: pan-grid 40s linear infinite;
-            z-index: -1;
-        }
-        @keyframes pan-grid {
-            0% { background-position: 0% 0%; }
-            100% { background-position: var(--grid-size) var(--grid-size); }
-        }
         .glassmorphism {
-            background: rgba(2, 6, 23, 0.6);
+            background: rgba(3, 7, 18, 0.6); /* Adjusted for new background */
             backdrop-filter: blur(25px) saturate(180%);
             -webkit-backdrop-filter: blur(25px) saturate(180%);
             border: 1px solid rgba(255, 255, 255, 0.08);
@@ -92,7 +73,6 @@
     </style>
 </head>
 <body class="antialiased">
-    <div class="animated-grid"></div>
     <canvas id="webgl-canvas"></canvas>
 
     <!-- Command Palette -->
@@ -332,43 +312,89 @@
                     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
                 }
             `;
+            
+            // NEW "Aurora" fragment shader - Simple but good
             const fragmentShader = `
                 uniform float u_time;
                 uniform vec2 u_mouse;
                 varying vec2 vUv;
 
-                // Simplex noise function
+                // Simplex Noise function for organic patterns
                 vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
-                vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
-                vec3 permute(vec3 x) { return mod289(((x*34.0)+1.0)*x); }
-                float snoise(vec2 v) {
-                    const vec4 C = vec4(0.211324865405187, 0.366025403784439, -0.577350269189626, 0.024390243902439);
-                    vec2 i  = floor(v + dot(v, C.yy) );
-                    vec2 x0 = v -   i + dot(i, C.xx);
-                    vec2 i1;
-                    i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
-                    vec4 x12 = x0.xyxy + C.xxzz;
-                    x12.xy -= i1;
+                vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+                vec4 permute(vec4 x) { return mod289(((x*34.0)+1.0)*x); }
+                vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
+
+                float snoise(vec3 v) {
+                    const vec2 C = vec2(1.0/6.0, 1.0/3.0);
+                    const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+                    vec3 i  = floor(v + dot(v, C.yyy));
+                    vec3 x0 = v - i + dot(i, C.xxx);
+                    vec3 g = step(x0.yzx, x0.xyz);
+                    vec3 l = 1.0 - g;
+                    vec3 i1 = min(g.xyz, l.zxy);
+                    vec3 i2 = max(g.xyz, l.zxy);
+                    vec3 x1 = x0 - i1 + C.xxx;
+                    vec3 x2 = x0 - i2 + C.yyy;
+                    vec3 x3 = x0 - D.yyy;
                     i = mod289(i);
-                    vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 )) + i.x + vec3(0.0, i1.x, 1.0 ));
-                    vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
-                    m = m*m;
-                    m = m*m;
-                    vec3 x = 2.0 * fract(p * C.www) - 1.0;
-                    vec3 h = abs(x) - 0.5;
-                    vec3 ox = floor(x + 0.5);
-                    vec3 a0 = x - ox;
-                    m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h );
-                    vec3 g;
-                    g.x  = a0.x  * x0.x  + h.x  * x0.y;
-                    g.yz = a0.yz * x12.xz + h.yz * x12.yw;
-                    return 130.0 * dot(m, g);
+                    vec4 p = permute(permute(permute(
+                                i.z + vec4(0.0, i1.z, i2.z, 1.0))
+                            + i.y + vec4(0.0, i1.y, i2.y, 1.0))
+                            + i.x + vec4(0.0, i1.x, i2.x, 1.0));
+                    float n_ = 0.142857142857;
+                    vec3 ns = n_ * D.wyz - D.xzx;
+                    vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
+                    vec4 x_ = floor(j * ns.z);
+                    vec4 y_ = floor(j - 7.0 * x_);
+                    vec4 x = x_ * ns.x + ns.yyyy;
+                    vec4 y = y_ * ns.x + ns.yyyy;
+                    vec4 h = 1.0 - abs(x) - abs(y);
+                    vec4 b0 = vec4(x.xy, y.xy);
+                    vec4 b1 = vec4(x.zw, y.zw);
+                    vec4 s0 = floor(b0)*2.0 + 1.0;
+                    vec4 s1 = floor(b1)*2.0 + 1.0;
+                    vec4 sh = -step(h, vec4(0.0));
+                    vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy;
+                    vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww;
+                    vec3 p0 = vec3(a0.xy,h.x);
+                    vec3 p1 = vec3(a0.zw,h.y);
+                    vec3 p2 = vec3(a1.xy,h.z);
+                    vec3 p3 = vec3(a1.zw,h.w);
+                    vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2,p2), dot(p3,p3)));
+                    p0 *= norm.x;
+                    p1 *= norm.y;
+                    p2 *= norm.z;
+                    p3 *= norm.w;
+                    vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+                    m = m * m;
+                    return 42.0 * dot(m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
                 }
 
                 void main() {
-                    vec2 uv = vUv * 2.0 - 1.0;
-                    float noise = snoise(uv * 2.0 + u_time * 0.1 + u_mouse * 0.2);
-                    vec3 color = vec3(0.01, 0.02, 0.1) + vec3(0.0, 0.4, 0.6) * (noise + 0.5);
+                    vec2 p = vUv * 3.0; // Scale the space
+                    p.x *= 1.0 / (2.0 - vUv.y); // aspect ratio
+                    p += u_mouse * 0.4; // Gentle mouse influence
+
+                    // Time-varying noise for a flowing effect
+                    float n = snoise(vec3(p * 0.8, u_time * 0.1));
+
+                    // Create soft bands of color
+                    float bands = sin(n * 5.0 + vUv.y * 2.5);
+
+                    // Define the color palette
+                    vec3 color1 = vec3(0.01, 0.02, 0.08); // Darkest blue
+                    vec3 color2 = vec3(0.05, 0.1, 0.25);  // Mid blue
+                    vec3 color3 = vec3(0.1, 0.25, 0.4);   // Cyan hint
+
+                    // Mix the colors based on the noise bands
+                    vec3 color = mix(color1, color2, smoothstep(-0.2, 0.2, bands));
+                    color = mix(color, color3, smoothstep(0.6, 0.9, bands));
+
+                    // Add a subtle vignette to focus the center
+                    float vignette = 1.0 - length(vUv - 0.5) * 0.9;
+                    color *= vignette;
+
                     gl_FragColor = vec4(color, 1.0);
                 }
             `;
@@ -377,13 +403,14 @@
                 scene = new THREE.Scene();
                 camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
                 renderer = new THREE.WebGLRenderer({ canvas, alpha: true });
+                renderer.setPixelRatio(window.devicePixelRatio);
                 renderer.setSize(window.innerWidth, window.innerHeight);
 
                 const geometry = new THREE.PlaneGeometry(2, 2);
                 material = new THREE.ShaderMaterial({
                     uniforms: {
                         u_time: { value: 0.0 },
-                        u_mouse: { value: new THREE.Vector2(0,0) }
+                        u_mouse: { value: new THREE.Vector2(0, 0) }
                     },
                     vertexShader,
                     fragmentShader,
@@ -400,9 +427,12 @@
             }
 
             function onMouseMove(event) {
-                const x = (event.clientX / window.innerWidth) * 2 - 1;
-                const y = -(event.clientY / window.innerHeight) * 2 + 1;
-                gsap.to(material.uniforms.u_mouse.value, { duration: 1.5, x: x, y: y, ease: 'power2.out' });
+                gsap.to(material.uniforms.u_mouse.value, { 
+                    duration: 1.5, 
+                    x: (event.clientX / window.innerWidth) * 2 - 1,
+                    y: -(event.clientY / window.innerHeight) * 2 + 1,
+                    ease: 'power2.out' 
+                });
             }
 
             const clock = new THREE.Clock();
@@ -526,9 +556,12 @@
                 }
             }
             
-
-
             window.addEventListener('keydown', (e) => {
+                if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+                    e.preventDefault();
+                    const isHidden = palette.classList.contains('opacity-0');
+                    togglePalette(isHidden);
+                }
                 if (e.key === 'Escape') {
                     togglePalette(false);
                 }
@@ -593,3 +626,4 @@
     </script>
 </body>
 </html>
+
